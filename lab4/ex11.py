@@ -22,7 +22,7 @@ def joint_distribution(clique,assigment):
         s=sum(dic[v]*assigment[v])
     return math.exp(s)
 
-assigment = list(it.product([1,1],repeat=5))
+assigment = list(it.product([-1,1],repeat=5))
 vars=['A1','A2','A3','A4','A5']
 
 joint=[]
@@ -39,4 +39,5 @@ prob=[(asg,val/Z) for asg,val  in joint]
 best = max(prob,key=lambda x: x[1])
 print("cel mai bun e ",best[0])
 print("prob este ",best[1])
+
 
