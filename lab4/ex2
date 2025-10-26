@@ -1,0 +1,96 @@
+# denoise_mrf_pgmpy.py
+import numpy as np
+import random
+import matplotlib.pyplot as plt
+
+from pgmpy.models import MarkovNetwork as MarkovModel
+from pgmpy.factors.discrete import DiscreteFactor
+from pgmpy.inference import BeliefPropagation
+
+
+orig = np.array([
+    [1,1,1,0,0],
+    [1,0,0,0,0],
+    [1,1,0,1,1],
+    [0,0,1,1,1],
+    [0,0,1,0,1]
+], dtype=int)
+
+
+rows, cols = orig.shape
+n_pixels = rows * cols
+n_noise = max(1, int(round(0.10 * n_pixels)))
+coords = [(i,j) for i in range(rows) for j in range(cols)]
+noisy = orig.copy()
+noisy_idx = random.sample(coords, n_noise)
+for (i,j) in noisy_idx:
+    noisy[i,j] = 1 - noisy[i,j]
+
+print("Noisy pixels flipped at:", noisy_idx)
+print("Original:", orig)
+print("Noisy:", noisy)
+
+
+_lambda = 2.0
+beta = 1.0
+
+
+model = MarkovModel()
+vars_list = []
+for i in range(rows):
+    for j in range(cols):
+        var = f"X_{i}_{j}"
+        vars_list.append(var)
+        model.add_node(var)
+
+
+for i in range(rows):
+    for j in range(cols):
+        v = f"X_{i}_{j}"
+        if i+1 < rows:
+            model.add_edge(v, f"X_{i+1}_{j}")
+        if j+1 < cols:
+            model.add_edge(v, f"X_{i}_{j+1}")
+
+
+for i in range(rows):
+    for j in range(cols):
+        var = f"X_{i}_{j}"
+        yi = noisy[i,j]
+        vals = [np.exp(-_lambda * ((xi - yi)**2)) for xi in (0,1)]
+        factor = DiscreteFactor([var], [2], np.array(vals))
+        model.add_factors(factor)
+
+
+pairwise_matrix = np.array([
+    [np.exp(-beta * (0-0)**2), np.exp(-beta * (0-1)**2)],
+    [np.exp(-beta * (1-0)**2), np.exp(-beta * (1-1)**2)]
+])
+
+
+added = set()
+for (u, v) in model.edges():
+    key = tuple(sorted((u,v)))
+    if key in added:
+        continue
+    added.add(key)
+    factor = DiscreteFactor([u, v], [2, 2], pairwise_matrix.flatten())
+    model.add_factors(factor)
+
+
+bp = BeliefPropagation(model)
+map_result = bp.map_query(variables=vars_list)
+
+
+denoised = np.zeros_like(orig)
+for i in range(rows):
+    for j in range(cols):
+        denoised[i,j] = map_result[f"X_{i}_{j}"]
+
+print("Denoised (MAP):\n", denoised)
+
+
+plt.figure(); plt.title("Original"); plt.imshow(orig, interpolation='nearest'); plt.axis('off')
+plt.figure(); plt.title("Noisy"); plt.imshow(noisy, interpolation='nearest'); plt.axis('off')
+plt.figure(); plt.title("Denoised (MAP)"); plt.imshow(denoised, interpolation='nearest'); plt.axis('off')
+plt.show()
